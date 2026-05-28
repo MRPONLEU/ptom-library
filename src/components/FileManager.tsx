@@ -830,6 +830,11 @@ export default forwardRef<FileManagerRef, {
     try {
       // 1. Get or create folder
       let folderId = localStorage.getItem('appFolderId');
+      if (!folderId) {
+        folderId = '1kmx1xBvWIWPyIllSg56wxbdKhM1P-40H';
+        localStorage.setItem('appFolderId', folderId);
+      }
+      
       if (folderId) {
         const checkResp = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,trashed`, {
           headers: { Authorization: `Bearer ${token}` }
