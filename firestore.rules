@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // File download statistics
+    match /file_stats/{fileId} {
+      // Any authenticated user can read stats
+      allow read: if request.auth != null;
+      // Any authenticated user can create/update stats
+      allow create, update: if request.auth != null;
+    }
+  }
+}

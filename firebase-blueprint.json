@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "FileStat": {
+      "title": "FileStat",
+      "description": "Stats for files including download counts",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "File ID from Google Drive"
+        },
+        "downloadCount": {
+          "type": "integer",
+          "description": "Number of times the file has been downloaded"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the file stat was last updated"
+        }
+      },
+      "required": ["id", "downloadCount"]
+    }
+  },
+  "firestore": {
+    "/file_stats/{fileId}": {
+      "schema": "FileStat",
+      "description": "Download statistics for each file"
+    }
+  }
+}

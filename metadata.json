@@ -1,0 +1,8 @@
+{
+  "name": "ptomlibrary",
+  "description": "An application to upload and manage files via Google Drive links.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
