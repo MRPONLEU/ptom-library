@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Check, X, ChevronDown, ChevronRight, GripVertical, ArrowUp, ArrowDown, FileText } from 'lucide-react';
 import { FileType } from '../types';
 import { useFileTypes } from '../hooks/useFileTypes';
+import { db } from '../lib/firebase';
 
 interface FileItem {
   id: string;
@@ -138,8 +139,29 @@ export default function TypesView() {
 
   const saveEdit = (index: number) => {
     const updated = [...types];
-    updated[index].name = editValue.trim();
-    saveTypes(updated);
+    const oldName = updated[index].name;
+    const newName = editValue.trim();
+
+    if (oldName !== newName) {
+      updated[index].name = newName;
+      saveTypes(updated);
+
+      const attachedFiles = getFilesForType(oldName);
+      if (attachedFiles.length > 0) {
+        import('firebase/firestore').then(async ({ doc, updateDoc }) => {
+          for (const file of attachedFiles) {
+            try {
+               await updateDoc(doc(db, 'files', file.id), {
+                  type: newName
+               });
+            } catch (e) {
+               console.error('Failed to update file category', e);
+            }
+          }
+        });
+      }
+    }
+    
     setEditingIndex(null);
   };
 

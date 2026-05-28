@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAccessToken, db } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { doc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { FileType } from '../types';
 import { Image, X } from 'lucide-react';

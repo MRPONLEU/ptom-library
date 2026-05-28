@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { getAccessToken, logout, db } from '../lib/firebase';
+import { logout, db } from '../lib/firebase';
 import { User } from 'firebase/auth';
 import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, increment, getDocs, query, orderBy } from 'firebase/firestore';
 import { Eye, EyeOff, Edit2, Trash2, Check, X, Search, Filter, RotateCcw, Download, Lock, Unlock, Image } from 'lucide-react';
@@ -284,13 +284,6 @@ export default forwardRef<FileManagerRef, {
     const { id, name } = deletingFile;
     setDeletingFile(null);
 
-    const token = await getAccessToken();
-    if (!token) {
-      setErrorMessage(`សូមចូលគណនី (Login) ដើម្បីលុបឯកសារ។`);
-      setTimeout(() => setErrorMessage(null), 3000);
-      return;
-    }
-
     try {
       await import('firebase/firestore').then(({ deleteDoc, doc }) => deleteDoc(doc(db, 'files', id)));
       setSuccessMessage(`ឯកសារ "${name}" ត្រូវបានលុបដោយជោគជ័យ។`);
@@ -307,13 +300,6 @@ export default forwardRef<FileManagerRef, {
     if (!editingFile || !editingFileName || !editingFileName.trim()) return;
     const { id } = editingFile;
     const newName = editingFileName.trim();
-
-    const token = await getAccessToken();
-    if (!token) {
-      setErrorMessage(`សូមចូលគណនី (Login) ដើម្បីកែសម្រួល។`);
-      setTimeout(() => setErrorMessage(null), 3000);
-      return;
-    }
 
     setLoading(true);
     setEditingFile(null);
