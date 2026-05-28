@@ -6,12 +6,36 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isSignedIn() { return request.auth != null; }
+
+    function isValidFileDocument(data) {
+      return data.keys().hasAll(['title', 'driveLink', 'type', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.driveLink is string && data.driveLink.size() > 0 && data.driveLink.size() <= 1000 &&
+             data.type is string && data.type.size() > 0 && data.type.size() <= 100 &&
+             data.createdAt == request.time &&
+             ( !('coverImage' in data) || (data.coverImage is string && data.coverImage.size() <= 1000) ) &&
+             ( !('subType' in data) || (data.subType is string && data.subType.size() <= 100) );
+    }
+
+    // File content
+    match /files/{fileId} {
+      allow read: if true; // Public access
+      allow create: if isSignedIn() && isValidId(fileId) && isValidFileDocument(request.resource.data);
+      allow update: if isSignedIn() && isValidId(fileId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasAny(['title', 'driveLink', 'type', 'subType', 'coverImage']) &&
+        ( !('title' in request.resource.data) || (request.resource.data.title is string && request.resource.data.title.size() <= 200) ) &&
+        ( !('driveLink' in request.resource.data) || (request.resource.data.driveLink is string && request.resource.data.driveLink.size() <= 1000) );
+      allow delete: if isSignedIn() && isValidId(fileId);
+    }
+
     // File download statistics
     match /file_stats/{fileId} {
-      // Any authenticated user can read stats
-      allow read: if request.auth != null;
-      // Any authenticated user can create/update stats
-      allow create, update: if request.auth != null;
+      // Anyone can read stats
+      allow read: if true;
+      // Anyone can increment stats (public download tracking)
+      allow create, update: if true;
     }
   }
 }

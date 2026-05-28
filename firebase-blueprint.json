@@ -20,12 +20,43 @@
         }
       },
       "required": ["id", "downloadCount"]
+    },
+    "FileDocument": {
+      "title": "FileDocument",
+      "description": "Metadata for a file stored via link",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "driveLink": {
+          "type": "string"
+        },
+        "coverImage": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "subType": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["title", "driveLink", "type", "createdAt"]
     }
   },
   "firestore": {
     "/file_stats/{fileId}": {
       "schema": "FileStat",
       "description": "Download statistics for each file"
+    },
+    "/files/{fileId}": {
+      "schema": "FileDocument",
+      "description": "Hosted files with Google Drive links"
     }
   }
 }

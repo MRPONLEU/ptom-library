@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { getAccessToken, logout, db } from '../lib/firebase';
 import { User } from 'firebase/auth';
-import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, increment, getDocs, query, orderBy } from 'firebase/firestore';
 import { Eye, EyeOff, Edit2, Trash2, Check, X, Search, Filter, RotateCcw, Download, Lock, Unlock, Image } from 'lucide-react';
 
 interface FileItem {
@@ -145,34 +145,6 @@ const renderThumbnail = (
     return (
       <div className="relative w-full h-full overflow-hidden rounded-xl">
         {baseElement}
-        
-        {/* Absolute Lock/Unlock Overlaid Badge for Mini */}
-        <div className="absolute top-1 right-1 z-20">
-          {isToggling ? (
-            <div className="bg-indigo-950/95 p-0.5 rounded-md border border-indigo-500/30">
-              <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-indigo-305 border-t-transparent rounded-full" />
-            </div>
-          ) : isPublic ? null : (
-            <button
-              onClick={(e) => {
-                if (user && handleTogglePermission) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleTogglePermission(file);
-                }
-              }}
-              disabled={!user}
-              className={`p-1 rounded-md shadow border flex items-center justify-center transition-all ${
-                user 
-                  ? 'bg-amber-500/95 hover:bg-amber-600 border-amber-400 text-white cursor-pointer active:scale-90' 
-                  : 'bg-amber-500/90 border-amber-400/50 text-white pointer-events-none'
-              }`}
-              title={user ? "ឯកជន (Private) - ចុចដើម្បីប្ដូរទៅជា «សាធារណៈ»" : "ឯកជន (Private)"}
-            >
-              <Lock size={9} className="stroke-[3]" />
-            </button>
-          )}
-        </div>
       </div>
     );
   }
@@ -180,34 +152,6 @@ const renderThumbnail = (
   return (
     <div className="relative w-full aspect-[4/3] rounded-[24px] overflow-hidden group shadow-md border border-white/5">
       {baseElement}
-      
-      {/* Absolute Lock/Unlock Overlaid Badge */}
-      <div className="absolute top-3 right-3 z-20">
-        {isToggling ? (
-          <div className="bg-indigo-950/95 backdrop-blur-md text-indigo-300 p-2 rounded-full border border-indigo-500/40 shadow-lg flex items-center justify-center animate-pulse pointer-events-none">
-            <span className="animate-spin inline-block w-4 h-4 border-2 border-indigo-305 border-t-transparent rounded-full" />
-          </div>
-        ) : isPublic ? null : (
-          <button
-            onClick={(e) => {
-              if (user && handleTogglePermission) {
-                e.preventDefault();
-                e.stopPropagation();
-                handleTogglePermission(file);
-              }
-            }}
-            disabled={!user}
-            className={`p-2.5 rounded-full shadow-xl border flex items-center justify-center transition-all ${
-              user 
-                ? 'bg-amber-500/85 hover:bg-amber-500 border-amber-400 hover:scale-[1.12] active:scale-90 text-white cursor-pointer shadow-amber-505/20' 
-                : 'bg-amber-500/80 border-amber-400/40 text-white pointer-events-none'
-            }`}
-            title={user ? "ឯកជន (Private) - ចុចដើម្បីប្ដូរទៅជា «សាធារណៈ»" : "ឯកជន (Private)"}
-          >
-            <Lock size={14} className="stroke-[2.5]" />
-          </button>
-        )}
-      </div>
     </div>
   );
 };
@@ -333,164 +277,8 @@ export default forwardRef<FileManagerRef, {
   const [publishingStatus, setPublishingStatus] = useState('');
   const [togglingPermissionId, setTogglingPermissionId] = useState<string | null>(null);
 
-  const handleMakeAllFilesPublic = async () => {
-    const token = await getAccessToken();
-    if (!token) {
-      setErrorMessage("សូមដំឡើង ឬចូលគណនី Google ជាមុនសិន! (Please sign in to Google Drive first!)");
-      setTimeout(() => setErrorMessage(null), 5000);
-      return;
-    }
-
-    if (files.length === 0) {
-      setErrorMessage("មិនមានឯកសារសម្រាប់កំណត់សិទ្ធិទេ! (No files found to share!)");
-      setTimeout(() => setErrorMessage(null), 5000);
-      return;
-    }
-
-    const confirmRun = window.confirm("តើអ្នកចង់កំណត់សិទ្ធិឯកសារទាំងអស់សរុប " + files.length + " ឯកសារឱ្យទៅជាសាធារណៈសម្រាប់គ្រប់គ្នាតំណភ្ជាប់អាចទាញយកបានដោយមិនចាំបាច់ស្នើសុំសិទ្ធិមែនទេ?\n\nDo you want to share all " + files.length + " files publicly so that anyone can download them without requesting permission?");
-    if (!confirmRun) return;
-
-    setIsPublishingAll(true);
-    setPublishingStatus(`កំពុងផ្ដើមដំណើរការកំណត់សិទ្ធិឯកសារចំនួន ${files.length} ...`);
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (file.id.startsWith('mock-')) {
-        successCount++;
-        continue;
-      }
-      setPublishingStatus(`កំពុងរៀបចំកំណត់សិទ្ធិ (${i + 1}/${files.length})៖ ${file.name}`);
-      try {
-        const permResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/permissions`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            role: 'reader',
-            type: 'anyone'
-          })
-        });
-        if (permResponse.ok) {
-          successCount++;
-        } else {
-          if (permResponse.status === 403) {
-            console.error(`Failed to publish file ${file.id}: 403 Forbidden`);
-          } else {
-            console.error(`Failed to publish file ${file.id}:`, await permResponse.text());
-          }
-          failCount++;
-        }
-      } catch (err) {
-        console.error(`Error sharing file ${file.id}:`, err);
-        failCount++;
-      }
-    }
-
-    setIsPublishingAll(false);
-    setPublishingStatus('');
-    
-    if (failCount === 0) {
-      setSuccessMessage(`ជោគជ័យទាំងស្រុង! ឯកសារទាំង ${successCount} របស់លោកអ្នកបានក្លាយជាសាធារណៈហើយ (គ្រប់អ៊ីមែលអាចទាញយកបានទាំងអស់)។`);
-    } else {
-      setSuccessMessage(`បានកំណត់ជាសាធារណៈរួចរាល់ចំនួន ${successCount} ឯកសារ (បរាជ័យ ${failCount} ឯកសារ)។`);
-    }
-    setTimeout(() => setSuccessMessage(null), 8000);
-    fetchFiles();
-  };
-
   const handleTogglePermission = async (file: FileItem) => {
-    if (file.id.startsWith('mock-')) {
-      alert("មិនអាចផ្លាស់ប្តូរសិទ្ធិឯកសារគំរូបានទេ! (Cannot change permissions of mock files!)");
-      return;
-    }
-    const token = await getAccessToken();
-    if (!token) {
-      setErrorMessage("សូមដំឡើង ឬចូលគណនី Google ជាមុនសិន! (Please sign in to Google Drive first!)");
-      setTimeout(() => setErrorMessage(null), 5000);
-      return;
-    }
-
-    setTogglingPermissionId(file.id);
-    const isCurrentlyPublic = file.shared;
-
-    try {
-      if (isCurrentlyPublic) {
-        // Change from Public to Private
-        // Step 1: fetch permissions list to find anyone type permission id
-        const listResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/permissions?fields=permissions(id,type)`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        
-        if (!listResponse.ok) {
-          if (listResponse.status === 403) {
-             throw new Error('ទីតាំងឯកសារនេះមិនមែនបង្កើតដោយកម្មវិធីនេះទេ ដូច្នេះអ្នកមិនអាចប្ដូរសិទ្ធិ (Public/Private) បានឡើយ។ (Cannot change permission: Insufficient scopes for files not created by the app)');
-          }
-          throw new Error(`Failed to list permissions: ${listResponse.status}`);
-        }
-        
-        const data = await listResponse.json();
-        const permissions = data.permissions || [];
-        const anyonePerms = permissions.filter((p: any) => p.type === 'anyone');
-
-        if (anyonePerms.length > 0) {
-          // Delete anyone permission(s)
-          for (const perm of anyonePerms) {
-            const delResp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/permissions/${perm.id}`, {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!delResp.ok && delResp.status === 403) {
-                throw new Error('ទីតាំងឯកសារនេះមិនមែនបង្កើតដោយកម្មវិធីនេះទេ ដូច្នេះអ្នកមិនអាចប្ដូរសិទ្ធិ (Public/Private) បានឡើយ។ (Cannot change permission: Insufficient scopes for files not created by the app)');
-            }
-          }
-        } else {
-          // Fallback deletion attempt using common permission Id 'anyoneWithLink'
-          const delResp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/permissions/anyoneWithLink`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          if (!delResp.ok && delResp.status === 403) {
-                throw new Error('ទីតាំងឯកសារនេះមិនមែនបង្កើតដោយកម្មវិធីនេះទេ ដូច្នេះអ្នកមិនអាចប្ដូរសិទ្ធិ (Public/Private) បានឡើយ។ (Cannot change permission: Insufficient scopes for files not created by the app)');
-          }
-        }
-        setSuccessMessage(`បានកែសម្រួលដកសិទ្ធិសាធារណៈរបស់ឯកសារ "${file.name}" ទៅជា «ឯកជន» រួចរាល់។ (File changed to Private)`);
-      } else {
-        // Change from Private to Public
-        const permResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/permissions`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            role: 'reader',
-            type: 'anyone'
-          })
-        });
-        
-      if (!permResponse.ok) {
-        if (permResponse.status === 403) {
-           throw new Error('ទីតាំងឯកសារនេះមិនមែនបង្កើតដោយកម្មវិធីនេះទេ ដូច្នេះអ្នកមិនអាចប្ដូរសិទ្ធិ (Public/Private) បានឡើយ។ (Cannot change permission: Insufficient scopes for files not created by the app)');
-        }
-        throw new Error(`Failed to set public permission: ${permResponse.status}`);
-      }
-        setSuccessMessage(`បានកែសម្រួលកំណត់សិទ្ធិឯកសារ "${file.name}" ទៅជា «សាធារណៈ» រួចរាល់។ គ្រប់គ្នាអាចទាញយកបាន! (File changed to Public)`);
-      }
-      
-      setTimeout(() => setSuccessMessage(null), 5000);
-      fetchFiles();
-    } catch (err: any) {
-      console.error('Error toggling file permission:', err);
-      setErrorMessage(`ការផ្លាស់ប្តូរសិទ្ធិបានបរាជ័យ៖ ${err.message || err}`);
-      setTimeout(() => setErrorMessage(null), 5000);
-    } finally {
-      setTogglingPermissionId(null);
-    }
+    // Obsolete: Drive links are handled manually now
   };
 
   useEffect(() => {
@@ -532,63 +320,21 @@ export default forwardRef<FileManagerRef, {
 
     const token = await getAccessToken();
     if (!token) {
-      // Local simulation for guest users
-      const cached = localStorage.getItem('cachedFileList');
-      if (cached) {
-        try {
-          const localFiles = JSON.parse(cached).filter((f: any) => f.id !== id);
-          localStorage.setItem('cachedFileList', JSON.stringify(localFiles));
-          setFiles(localFiles);
-          setSuccessMessage(`ឯកសារ "${name}" ត្រូវបានលុបដោយជោគជ័យ (លុបពីម៉ាស៊ីនរបស់អ្នក)។`);
-          setTimeout(() => setSuccessMessage(null), 3000);
-        } catch (e) {
-          console.error(e);
-        }
-      }
+      setErrorMessage(`សូមចូលគណនី (Login) ដើម្បីលុបឯកសារ។`);
+      setTimeout(() => setErrorMessage(null), 3000);
       return;
     }
-    try {
-      if (deletingFile.properties?.coverId) {
-        try {
-          await fetch(`https://www.googleapis.com/drive/v3/files/${deletingFile.properties.coverId}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` }
-          });
-        } catch (coverErr) {
-          console.error("Failed to delete cover file:", coverErr);
-        }
-      }
 
-      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      
-      if (response.ok) {
-        setSuccessMessage(`ឯកសារ "${name}" ត្រូវបានលុបដោយជោគជ័យ។`);
-        setTimeout(() => setSuccessMessage(null), 3000);
-        fetchFiles();
-      } else {
-        if (response.status === 403) {
-            throw new Error('ទីតាំងឯកសារនេះមិនមែនបង្កើតដោយកម្មវិធីនេះទេ ដូច្នេះអ្នកមិនអាចលុបវាបានឡើយ។ (Cannot delete: Insufficient scopes for files not created by the app)');
-        }
-        const errorText = await response.text();
-        throw new Error(`Deletion failed (${response.status}): ${errorText}`);
-      }
+    try {
+      await import('firebase/firestore').then(({ deleteDoc, doc, db }) => deleteDoc(doc(db, 'files', id)));
+      setSuccessMessage(`ឯកសារ "${name}" ត្រូវបានលុបដោយជោគជ័យ។`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+      fetchFiles();
     } catch (error) {
       console.error('Error deleting file:', error);
       setErrorMessage(`ការលុបឯកសារមិនបានជោគជ័យ៖ ${error instanceof Error ? error.message : 'Unknown error'}`);
       setTimeout(() => setErrorMessage(null), 5000);
     }
-  };
-
-  const handleToggleHide = (id: string) => {
-    setHiddenFiles(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   };
 
   const handleEditSubmit = async () => {
@@ -598,35 +344,8 @@ export default forwardRef<FileManagerRef, {
 
     const token = await getAccessToken();
     if (!token) {
-      // Local simulation for guest users
-      const cached = localStorage.getItem('cachedFileList');
-      if (cached) {
-        try {
-          const localFiles = JSON.parse(cached).map((f: any) => {
-            if (f.id === id) {
-              return {
-                ...f,
-                name: newName,
-                properties: {
-                  type: editingType,
-                  subType: editingSubType,
-                  coverId: editCoverFile ? 'local-preview' : f.properties?.coverId
-                },
-                thumbnailLink: editCoverFile ? URL.createObjectURL(editCoverFile) : editNewFile ? URL.createObjectURL(editNewFile) : f.thumbnailLink
-              };
-            }
-            return f;
-          });
-          localStorage.setItem('cachedFileList', JSON.stringify(localFiles));
-          setFiles(localFiles);
-          setSuccessMessage(`បានកែសម្រួលព័ត៌មានឯកសាររដោយជោគជ័យ (សកម្មភាពនេះត្រូវបានរក្សាទុកនៅលើម៉ាស៊ីនរបស់អ្នក)។`);
-          setTimeout(() => setSuccessMessage(null), 3000);
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      setEditingFile(null);
-      setEditCoverFile(null);
+      setErrorMessage(`សូមចូលគណនី (Login) ដើម្បីកែសម្រួល។`);
+      setTimeout(() => setErrorMessage(null), 3000);
       return;
     }
 
@@ -634,143 +353,37 @@ export default forwardRef<FileManagerRef, {
     setEditingFile(null);
 
     try {
-      let currentCoverId = editingFile.properties?.coverId || '';
+      let currentCoverBase64 = editingFile.thumbnailLink || '';
 
-      // Upload Cover File first if selected
       if (editCoverFile) {
-        try {
-          let folderId = localStorage.getItem('appFolderId') || '';
-          const coverMetadata: any = { 
-            name: `${newName}_cover`, 
-            properties: { isCover: 'true', parentFile: newName } 
-          };
-          if (folderId) coverMetadata.parents = [folderId];
-
-          const boundary = '314159265358979323846';
-          const coverMultipartBody = new Blob([
-            `--${boundary}\r\n`,
-            `Content-Type: application/json; charset=UTF-8\r\n\r\n`,
-            JSON.stringify(coverMetadata),
-            `\r\n--${boundary}\r\n`,
-            `Content-Type: ${editCoverFile.type || 'image/jpeg'}\r\n\r\n`,
-            editCoverFile,
-            `\r\n--${boundary}--`
-          ], { type: `multipart/related; boundary=${boundary}` });
-
-          const coverResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-            method: 'POST',
-            headers: { 
-              Authorization: `Bearer ${token}`,
-              'Content-Type': `multipart/related; boundary=${boundary}`
-            },
-            body: coverMultipartBody,
-          });
-
-          if (coverResponse.ok) {
-            const coverData = await coverResponse.json();
-            currentCoverId = coverData.id;
-
-            // Set permissions to anyone
-            await fetch(`https://www.googleapis.com/drive/v3/files/${currentCoverId}/permissions`, {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ role: 'reader', type: 'anyone' })
-            });
-          } else {
-             const errText = await coverResponse.text();
-             if (coverResponse.status === 404 && errText.includes('File not found')) {
-                 localStorage.removeItem('appFolderId');
-             }
-          }
-        } catch (coverErr) {
-          console.error('Error uploading cover from edit form:', coverErr);
-        }
+         currentCoverBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(editCoverFile);
+            reader.onload = (event) => {
+              const img = new window.Image();
+              img.src = event.target?.result as string;
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 800;
+                const scaleSize = MAX_WIDTH / img.width;
+                canvas.width = MAX_WIDTH;
+                canvas.height = img.height * scaleSize;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/webp', 0.6));
+              };
+            };
+         });
       }
 
-      let response;
-      if (editNewFile) {
-        // Multipart update (Name, properties type/subtype/coverId, AND new file binary)
-        const metadata = {
-          name: newName,
-          properties: {
-            type: editingType,
-            subType: editingSubType,
-            coverId: currentCoverId
-          }
-        };
-        const boundary = '314159265358979323846';
-        const delimiter = `\r\n--${boundary}\r\n`;
-        const closeDelimiter = `\r\n--${boundary}--`;
+      await import('firebase/firestore').then(({ updateDoc, doc, db }) => updateDoc(doc(db, 'files', id), {
+         title: newName,
+         type: editingType,
+         subType: editingSubType,
+         ...(editCoverFile ? { coverImage: currentCoverBase64 } : {})
+      }));
 
-        const multipartBody = new Blob([
-          `--${boundary}\r\n`,
-          `Content-Type: application/json; charset=UTF-8\r\n\r\n`,
-          JSON.stringify(metadata),
-          delimiter,
-          `Content-Type: ${editNewFile.type || 'application/octet-stream'}\r\n\r\n`,
-          editNewFile,
-          closeDelimiter
-        ], { type: `multipart/related; boundary=${boundary}` });
-
-        response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=multipart`, {
-          method: 'PATCH',
-          headers: { 
-            Authorization: `Bearer ${token}`,
-            'Content-Type': `multipart/related; boundary=${boundary}`
-          },
-          body: multipartBody,
-        });
-      } else {
-        // Standard metadata PATCH update (No new file content)
-        response = await fetch(`https://www.googleapis.com/drive/v3/files/${id}`, {
-          method: 'PATCH',
-          headers: { 
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ 
-            name: newName,
-            properties: {
-              type: editingType,
-              subType: editingSubType,
-              coverId: currentCoverId
-            }
-          }),
-        });
-      }
-
-      if (!response.ok) {
-        if (response.status === 403) {
-            throw new Error('ទីតាំងឯកសារនេះមិនមែនបង្កើតដោយកម្មវិធីនេះទេ ដូច្នេះអ្នកមិនអាចកែប្រែវាបានឡើយ។ (Cannot update: Insufficient scopes for files not created by the app)');
-        }
-        const errorText = await response.text();
-        if (response.status === 404 && errorText.includes('File not found')) {
-            throw new Error('ឯកសារ ឬ folder ត្រូវបានលុបបាត់ហើយ! សូម Refresh ម្តងទៀត។ (File or folder not found, please refresh).');
-        }
-        throw new Error(`Update failed (${response.status}): ${errorText}`);
-      }
-
-      try {
-        // Ensure updated file is public ("anyone with link can read")
-        await fetch(`https://www.googleapis.com/drive/v3/files/${id}/permissions`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            role: 'reader',
-            type: 'anyone'
-          })
-        });
-      } catch (permErr) {
-        console.error('Error sharing updated file:', permErr);
-      }
-
-      setSuccessMessage(`បានកែសម្រួលព័ត៌មានឯកសាររដោយជោគជ័យ និងចែករំលែកជាសាធារណៈ។`);
+      setSuccessMessage(`បានកែសម្រួលព័ត៌មានឯកសាររដោយជោគជ័យ។`);
       setTimeout(() => setSuccessMessage(null), 3000);
       fetchFiles();
     } catch (error) {
@@ -795,118 +408,24 @@ export default forwardRef<FileManagerRef, {
       setLoading(true);
     }
 
-    const token = await getAccessToken();
-    if (!token) {
-      if (!cached) {
-        const defaultFiles = [
-          {
-            id: 'mock-1',
-            name: 'ពាក្យពិបាក អំណាន : សុបិនចម្លែក',
-            mimeType: 'application/pdf',
-            webViewLink: 'https://drive.google.com',
-            properties: {
-              type: 'ភាសាខ្មែរ',
-              subType: 'ថ្នាក់ទី១'
-            }
-          },
-          {
-            id: 'mock-2',
-            name: 'គណិតវិទ្យា ថ្នាក់ទី២ ៖ វិធីបូកនិងវិធីដក',
-            mimeType: 'application/pdf',
-            webViewLink: 'https://drive.google.com',
-            properties: {
-              type: 'គណិតវិទ្យា',
-              subType: 'ថ្នាក់ទី២'
-            }
-          }
-        ];
-        setFiles(defaultFiles);
-        localStorage.setItem('cachedFileList', JSON.stringify(defaultFiles));
-      }
-      setLoading(false);
-      return;
-    }
-
     try {
-      // 1. Get or create folder
-      let folderId = localStorage.getItem('appFolderId');
-      if (!folderId) {
-        folderId = '1kmx1xBvWIWPyIllSg56wxbdKhM1P-40H';
-        localStorage.setItem('appFolderId', folderId);
-      }
-      
-      if (folderId) {
-        const checkResp = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,trashed`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!checkResp.ok) {
-          folderId = null;
-          localStorage.removeItem('appFolderId');
-        } else {
-          const checkData = await checkResp.json();
-          if (checkData.trashed) {
-             folderId = null;
-             localStorage.removeItem('appFolderId');
-          }
-        }
-      }
+      const q = query(collection(db, 'files'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      const fetchedFiles = snapshot.docs.map(doc => ({
+           id: doc.id,
+           name: doc.data().title || '',
+           mimeType: 'application/pdf',
+           webViewLink: doc.data().driveLink || '',
+           webContentLink: doc.data().driveLink || '',
+           thumbnailLink: doc.data().coverImage || '',
+           properties: {
+             type: doc.data().type || '',
+             subType: doc.data().subType || '',
+             coverId: ''
+           },
+           shared: true
+      }));
 
-      if (!folderId) {
-        // Search
-        const query = 'name="MyAppFiles" and mimeType="application/vnd.google-apps.folder" and trashed=false';
-        const searchResp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        
-        if (!searchResp.ok) {
-            console.error('Error searching for folder');
-        } else {
-            const searchData = await searchResp.json();
-            if (searchData.files && searchData.files.length > 0) {
-              folderId = searchData.files[0].id;
-            }
-        }
-        
-        if (!folderId) {
-          // Create
-          const createResp = await fetch('https://www.googleapis.com/drive/v3/files', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'MyAppFiles', mimeType: 'application/vnd.google-apps.folder' }),
-          });
-          if (!createResp.ok) {
-              const errorText = await createResp.text();
-              console.error('Error creating folder:', errorText);
-          } else {
-              const createData = await createResp.json();
-              folderId = createData.id;
-          }
-        }
-        if (folderId) localStorage.setItem('appFolderId', folderId);
-      }
-
-      // 2. Fetch files in folder
-      const query = `trashed=false and (mimeType contains 'image/' or mimeType='application/pdf' or mimeType='application/vnd.google-apps.document' or mimeType='application/vnd.google-apps.presentation')`;
-      const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id, name, mimeType, webViewLink, webContentLink, thumbnailLink, properties, shared)&orderBy=modifiedTime desc`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.status === 404) {
-        // Folder likely deleted, clear to force recreate next time
-        localStorage.removeItem('appFolderId');
-        throw new Error('Folder not found');
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        if (response.status === 403 && (errorText.toLowerCase().includes('insufficient') || errorText.toLowerCase().includes('permission_denied'))) {
-          setErrorMessage('សូម Logout (ចាកចេញ) ហើយ Login ចូលម្តងទៀត ដោយកុំភ្លេចធីកប្រអប់ (Check box) អនុញ្ញាតឲ្យ Google Drive ដើម្បីអាចប្រើប្រាស់កម្មវិធីនេះបាន។ (Please logout and login again, ensuring you check the Drive permission box).');
-        }
-        throw new Error(`API request failed with status ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-      const fetchedFiles = (data.files || []).filter((f: any) => f.properties?.isCover !== 'true');
       setFiles(fetchedFiles);
       localStorage.setItem('cachedFileList', JSON.stringify(fetchedFiles));
     } catch (error) {
@@ -1030,40 +549,16 @@ export default forwardRef<FileManagerRef, {
                         <Trash2 size={16}/>
                       </button>
                     </div>
-                    {user ? (
-                      <button 
-                        onClick={() => handleTogglePermission(file)}
-                        disabled={togglingPermissionId === file.id}
-                        className={`px-4 py-2 text-xs font-bold rounded-xl transition-all shrink-0 flex items-center gap-1.5 border cursor-pointer ${
-                          togglingPermissionId === file.id
-                            ? 'bg-slate-800 border-white/5 text-slate-500 pointer-events-none'
-                            : file.shared || file.id.startsWith('mock-')
-                              ? 'bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/30 text-emerald-400 hover:text-emerald-300'
-                              : 'bg-amber-600/20 hover:bg-amber-600/30 border-amber-500/30 text-amber-400 text-amber-300'
-                        }`}
-                        title="ចុចដើម្បីកំណត់សិទ្ធិឯកសារ (Click to toggle file permission)"
-                      >
-                        {togglingPermissionId === file.id ? (
-                          <span className="animate-spin inline-block w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full" />
-                        ) : file.shared || file.id.startsWith('mock-') ? (
-                          <Unlock size={14} className="text-emerald-400" />
-                        ) : (
-                          <Lock size={14} className="text-amber-400" />
-                        )}
-                        <span>{file.shared || file.id.startsWith('mock-') ? 'កំណត់សិទ្ធិ៖ Public' : 'កំណត់សិទ្ធិ៖ Private'}</span>
-                      </button>
-                    ) : (
-                      <a 
-                        href={file.webContentLink || file.webViewLink} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        onClick={() => handleDownloadClick(file.id)}
-                        className="px-4 py-2 text-xs font-bold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 hover:text-indigo-300 rounded-xl transition-all shrink-0 flex items-center gap-1.5"
-                      >
-                        <Download size={14} />
-                        ទាញយក
-                      </a>
-                    )}
+                    <a 
+                      href={file.webContentLink || file.webViewLink || '#'} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      onClick={() => handleDownloadClick(file.id)}
+                      className="px-4 py-2 text-xs font-bold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 hover:text-indigo-300 rounded-xl transition-all shrink-0 flex items-center gap-1.5"
+                    >
+                      <Download size={14} />
+                      ទាញយក
+                    </a>
                   </div>
                 </div>
               ))}
@@ -1143,31 +638,8 @@ export default forwardRef<FileManagerRef, {
                             </span>
                             <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-white/5">
                               <div className="flex items-center justify-between">
-                                {user ? (
-                                  <button 
-                                    onClick={() => handleTogglePermission(file)}
-                                    disabled={togglingPermissionId === file.id}
-                                    className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5 border cursor-pointer ${
-                                      togglingPermissionId === file.id
-                                        ? 'bg-slate-800 border-white/5 text-slate-500 pointer-events-none'
-                                        : file.shared || file.id.startsWith('mock-')
-                                          ? 'bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/30 text-emerald-400 hover:text-emerald-300'
-                                          : 'bg-amber-600/20 hover:bg-amber-600/30 border-amber-500/30 text-amber-400 text-amber-300'
-                                    }`}
-                                    title="ចុចដើម្បីកំណត់សិទ្ធិឯកសារ (Click to toggle file permission)"
-                                  >
-                                    {togglingPermissionId === file.id ? (
-                                      <span className="animate-spin inline-block w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full" />
-                                    ) : file.shared || file.id.startsWith('mock-') ? (
-                                      <Unlock size={14} className="text-emerald-400" />
-                                    ) : (
-                                      <Lock size={14} className="text-amber-400" />
-                                    )}
-                                    <span>{file.shared || file.id.startsWith('mock-') ? 'កំណត់សិទ្ធិ៖ Public' : 'កំណត់សិទ្ធិ៖ Private'}</span>
-                                  </button>
-                                ) : (
                                   <a 
-                                    href={file.webContentLink || file.webViewLink} 
+                                    href={file.webContentLink || file.webViewLink || '#'} 
                                     target="_blank" 
                                     rel="noopener noreferrer" 
                                     onClick={() => handleDownloadClick(file.id)}
@@ -1176,7 +648,6 @@ export default forwardRef<FileManagerRef, {
                                     <Download size={15} />
                                     ទាញយក
                                   </a>
-                                )}
                                 <span className="text-[11px] text-slate-400 font-sans">
                                   ទាញយក៖ <span className="text-indigo-400 font-bold">{downloadCounts[file.id] || 0}</span> ដង
                                 </span>
