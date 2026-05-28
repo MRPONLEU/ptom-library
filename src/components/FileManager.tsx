@@ -3,6 +3,7 @@ import { getAccessToken, logout, db } from '../lib/firebase';
 import { User } from 'firebase/auth';
 import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc, increment, getDocs, query, orderBy } from 'firebase/firestore';
 import { Eye, EyeOff, Edit2, Trash2, Check, X, Search, Filter, RotateCcw, Download, Lock, Unlock, Image } from 'lucide-react';
+import { useFileTypes } from '../hooks/useFileTypes';
 
 interface FileItem {
   id: string;
@@ -209,7 +210,7 @@ export default forwardRef<FileManagerRef, {
   const [editNewFile, setEditNewFile] = useState<File | null>(null);
   const [editCoverFile, setEditCoverFile] = useState<File | null>(null);
   const editCoverInputRef = React.useRef<HTMLInputElement>(null);
-  const [fileTypes, setFileTypes] = useState<any[]>([]);
+  const { fileTypes } = useFileTypes();
 
   const [deletingFile, setDeletingFile] = useState<FileItem | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -277,38 +278,6 @@ export default forwardRef<FileManagerRef, {
   const handleTogglePermission = async (file: FileItem) => {
     // Obsolete: Drive links are handled manually now
   };
-
-  useEffect(() => {
-    const saved = localStorage.getItem('fileTypes');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const normalized = parsed.map((item: any) => {
-            if (typeof item === 'string') {
-              return { name: item, subTypes: [] };
-            }
-            return {
-              name: item.name || '',
-              subTypes: Array.isArray(item.subTypes) ? item.subTypes : []
-            };
-          });
-          setFileTypes(normalized);
-        }
-      } catch (e) {
-        console.error('Error parsing file types in FileManager:', e);
-      }
-    } else {
-      const defaultTypes = [
-        { name: 'ភាសាខ្មែរ', subTypes: ['ថ្នាក់ទី១', 'ថ្នាក់ទី២', 'ថ្នាក់ទី៣'] },
-        { name: 'គណិតវិទ្យា', subTypes: ['ថ្នាក់ទី១', 'ថ្នាក់ទី២', 'ថ្នាក់ទី៣'] },
-        { name: 'វិទ្យាសាស្ត្រ', subTypes: ['ថ្នាក់ទី១', 'ថ្នាក់ទី២', 'ថ្នាក់ទី៣'] },
-        { name: 'សិក្សាសង្គម', subTypes: ['ថ្នាក់ទី១', 'ថ្នាក់ទី២', 'ថ្នាក់ទី៣'] }
-      ];
-      setFileTypes(defaultTypes);
-      localStorage.setItem('fileTypes', JSON.stringify(defaultTypes));
-    }
-  }, []);
 
   const handleDeleteConfirm = async () => {
     if (!deletingFile) return;

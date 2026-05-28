@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Check, X, ChevronDown, ChevronRight, GripVertical, ArrowUp, ArrowDown, FileText } from 'lucide-react';
 import { FileType } from '../types';
+import { useFileTypes } from '../hooks/useFileTypes';
 
 interface FileItem {
   id: string;
@@ -12,7 +13,7 @@ interface FileItem {
 }
 
 export default function TypesView() {
-  const [types, setTypes] = useState<FileType[]>([]);
+  const { fileTypes: types, saveFileTypes: saveTypes } = useFileTypes();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [newType, setNewType] = useState('');
   const [newSubType, setNewSubType] = useState<Record<number, string>>({});
@@ -22,29 +23,6 @@ export default function TypesView() {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    // Load types
-    const saved = localStorage.getItem('fileTypes');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const normalized: FileType[] = parsed.map((item: any) => {
-            if (typeof item === 'string') {
-              return { name: item, subTypes: [] };
-            }
-            return {
-              name: item.name || '',
-              subTypes: Array.isArray(item.subTypes) ? item.subTypes : []
-            };
-          });
-          setTypes(normalized);
-          localStorage.setItem('fileTypes', JSON.stringify(normalized));
-        }
-      } catch (e) {
-        console.error('Error parsing file types:', e);
-      }
-    }
-
     // Load file list to find links/attachments
     const cachedFiles = localStorage.getItem('cachedFileList');
     if (cachedFiles) {
@@ -58,11 +36,6 @@ export default function TypesView() {
       }
     }
   }, []);
-
-  const saveTypes = (updated: FileType[]) => {
-    setTypes(updated);
-    localStorage.setItem('fileTypes', JSON.stringify(updated));
-  };
 
   const getFilesForType = (typeName: string) => {
     return files.filter(f => f.properties?.type === typeName);

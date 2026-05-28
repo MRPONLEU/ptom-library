@@ -3,6 +3,7 @@ import { getAccessToken, db } from '../lib/firebase';
 import { doc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { FileType } from '../types';
 import { Image, X } from 'lucide-react';
+import { useFileTypes } from '../hooks/useFileTypes';
 
 interface UploaderProps {
   onUploadSuccess: () => void;
@@ -13,34 +14,11 @@ export default function Uploader({ onUploadSuccess }: UploaderProps) {
   const [driveLink, setDriveLink] = useState('');
   const [selectedType, setSelectedType] = useState('');
   const [selectedSubType, setSelectedSubType] = useState('');
-  const [fileTypes, setFileTypes] = useState<FileType[]>([]);
+  const { fileTypes } = useFileTypes();
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverBase64, setCoverBase64] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const coverInputRef = React.useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('fileTypes');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const normalized: FileType[] = parsed.map((item: any) => {
-            if (typeof item === 'string') {
-              return { name: item, subTypes: [] };
-            }
-            return {
-              name: item.name || '',
-              subTypes: Array.isArray(item.subTypes) ? item.subTypes : []
-            };
-          });
-          setFileTypes(normalized);
-        }
-      } catch (e) {
-        console.error('Error parsing file types in Uploader:', e);
-      }
-    }
-  }, []);
 
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
