@@ -432,6 +432,7 @@ export default forwardRef<FileManagerRef, {
       setLoading(false);
     }, (error) => {
        console.error('Error fetching files:', error);
+       setErrorMessage(`មិនអាចទាញយកទិន្នន័យបានទេ: ${error.message}`);
        setLoading(false);
     });
 
