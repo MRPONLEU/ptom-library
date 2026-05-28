@@ -203,6 +203,7 @@ export default forwardRef<FileManagerRef, {
   // Modern dialog and alert replacement states
   const [editingFile, setEditingFile] = useState<FileItem | null>(null);
   const [editingFileName, setEditingFileName] = useState<string>('');
+  const [editingDriveLink, setEditingDriveLink] = useState<string>('');
   const [editingType, setEditingType] = useState<string>('');
   const [editingSubType, setEditingSubType] = useState<string>('');
   const [editNewFile, setEditNewFile] = useState<File | null>(null);
@@ -229,10 +230,6 @@ export default forwardRef<FileManagerRef, {
     }
     return true;
   };
-
-  useEffect(() => {
-    fetchFiles();
-  }, [user]);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'file_stats'), (snapshot) => {
@@ -326,7 +323,7 @@ export default forwardRef<FileManagerRef, {
     }
 
     try {
-      await import('firebase/firestore').then(({ deleteDoc, doc, db }) => deleteDoc(doc(db, 'files', id)));
+      await import('firebase/firestore').then(({ deleteDoc, doc }) => deleteDoc(doc(db, 'files', id)));
       setSuccessMessage(`ឯកសារ "${name}" ត្រូវបានលុបដោយជោគជ័យ។`);
       setTimeout(() => setSuccessMessage(null), 3000);
       fetchFiles();
@@ -376,8 +373,9 @@ export default forwardRef<FileManagerRef, {
          });
       }
 
-      await import('firebase/firestore').then(({ updateDoc, doc, db }) => updateDoc(doc(db, 'files', id), {
+      await import('firebase/firestore').then(({ updateDoc, doc }) => updateDoc(doc(db, 'files', id), {
          title: newName,
+         driveLink: editingDriveLink,
          type: editingType,
          subType: editingSubType,
          ...(editCoverFile ? { coverImage: currentCoverBase64 } : {})
@@ -396,6 +394,10 @@ export default forwardRef<FileManagerRef, {
   };
 
   const fetchFiles = async () => {
+    // No-op. Real-time updates handled by useEffect.
+  };
+
+  useEffect(() => {
     // 1. Optimistic rendering (Offline-first approach)
     const cached = localStorage.getItem('cachedFileList');
     if (cached) {
@@ -408,9 +410,8 @@ export default forwardRef<FileManagerRef, {
       setLoading(true);
     }
 
-    try {
-      const q = query(collection(db, 'files'), orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
+    const q = query(collection(db, 'files'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedFiles = snapshot.docs.map(doc => ({
            id: doc.id,
            name: doc.data().title || '',
@@ -428,12 +429,14 @@ export default forwardRef<FileManagerRef, {
 
       setFiles(fetchedFiles);
       localStorage.setItem('cachedFileList', JSON.stringify(fetchedFiles));
-    } catch (error) {
-      console.error('Error fetching files:', error);
-    } finally {
       setLoading(false);
-    }
-  };
+    }, (error) => {
+       console.error('Error fetching files:', error);
+       setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   useImperativeHandle(ref, () => ({
     fetchFiles,
@@ -532,12 +535,20 @@ export default forwardRef<FileManagerRef, {
                   {/* Right: Actions Container */}
                   <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0 border-t border-white/5 pt-3 sm:pt-0 sm:border-none w-full sm:w-auto">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => handleToggleHide(file.id)} className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all" title="Hide/Unhide">
+                      <button onClick={() => {
+                        setHiddenFiles(prev => {
+                          const next = new Set(prev);
+                          if (next.has(file.id)) next.delete(file.id);
+                          else next.add(file.id);
+                          return next;
+                        });
+                      }} className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all" title="Hide/Unhide">
                         {hiddenFiles.has(file.id) ? <EyeOff size={16}/> : <Eye size={16}/>}
                       </button>
                       <button onClick={() => {
                         setEditingFile(file);
                         setEditingFileName(file.name);
+                        setEditingDriveLink(file.webViewLink || '');
                         setEditingType(file.properties?.type || '');
                         setEditingSubType(file.properties?.subType || '');
                         setEditNewFile(null);
@@ -712,6 +723,17 @@ export default forwardRef<FileManagerRef, {
               </div>
 
               <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-2">តំណភ្ជាប់ Google Drive (Drive Link)</label>
+                <input
+                  type="text"
+                  value={editingDriveLink}
+                  onChange={(e) => setEditingDriveLink(e.target.value)}
+                  placeholder="https://drive.google.com/file/d/..."
+                  className="w-full bg-slate-950 border border-white/10 rounded-2xl px-5 py-3 text-sm font-semibold text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+
+              <div>
                 <label className="text-xs font-semibold text-slate-400 block mb-2">ប្រភេទ (Type)</label>
                 <select
                   value={editingType}
@@ -783,10 +805,10 @@ export default forwardRef<FileManagerRef, {
                           <X size={15} />
                         </button>
                       </>
-                    ) : editingFile.properties?.coverId ? (
+                    ) : editingFile.thumbnailLink ? (
                       <>
                         <img 
-                          src={`https://drive.google.com/thumbnail?id=${editingFile.properties.coverId}&sz=w800`} 
+                          src={editingFile.thumbnailLink} 
                           alt="Current Cover" 
                           className="w-full h-full object-cover" 
                           referrerPolicy="no-referrer"
@@ -813,15 +835,6 @@ export default forwardRef<FileManagerRef, {
                     )}
                   </div>
                 </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400 block mb-2">ជំនួសឯកសារ (Replace File - ស្រេចចិត្ត/Optional)</label>
-                <input
-                  type="file"
-                  onChange={(e) => setEditNewFile(e.target.files?.[0] || null)}
-                  className="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-600/30 file:text-indigo-300 hover:file:bg-indigo-500 hover:file:text-white transition-all cursor-pointer"
-                />
               </div>
 
               <div className="flex items-center gap-3 justify-end pt-4 border-t border-white/5">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getAccessToken, db } from '../lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { FileType } from '../types';
 import { Image, X } from 'lucide-react';
 
@@ -76,18 +76,17 @@ export default function Uploader({ onUploadSuccess }: UploaderProps) {
     setUploading(true);
 
     try {
-      // 1. Generate new id
-      const fileId = crypto.randomUUID();
+      // 1. Generate new id using Firestore
+      const docRef = doc(collection(db, 'files'));
 
       // 2. Save directly to Firestore
-      const docRef = doc(db, 'files', fileId);
       await setDoc(docRef, {
         title,
         driveLink,
         type: selectedType,
         subType: selectedSubType,
         coverImage: coverBase64,
-        createdAt: new Date().toISOString(), // Fallback for clients matching string
+        createdAt: serverTimestamp(),
       });
 
       alert('ឯកសារត្រូវបានរក្សាទុករួចរាល់ហើយ! (File saved successfully!)');

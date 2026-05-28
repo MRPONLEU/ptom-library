@@ -333,8 +333,8 @@ export default function App() {
             )}
 
             {/* Logo/Identity - SHOW name on both mobile and desktop, and keep logo icon on desktop */}
-            <div className="flex items-center gap-2.5 sm:gap-3">
-              <div className="hidden md:flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-indigo-500 via-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/20">
+            <div className="flex items-center gap-2.5 sm:gap-3" onDoubleClick={!user ? handleLogin : undefined}>
+              <div className="hidden md:flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-indigo-500 via-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/20 cursor-pointer">
                 <BookOpen className="w-5 h-5" />
               </div>
               <h1 className="font-extrabold text-base sm:text-lg tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-200 select-none">
@@ -352,7 +352,7 @@ export default function App() {
               <button onClick={logout} className="text-sm font-semibold text-slate-400 hover:text-white transition-colors">Sign out</button>
             </div>
           ) : (
-            <button onClick={handleLogin} className="text-sm font-bold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 px-4 py-2 rounded-xl border border-indigo-500/30 hover:border-indigo-500/50 transition-all shrink-0">Sign in</button>
+            <div className="hidden"></div>
           )}
         </header>
         {activeTab === 'manage' && (
