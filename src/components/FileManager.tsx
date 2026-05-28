@@ -410,7 +410,7 @@ export default forwardRef<FileManagerRef, {
       setLoading(true);
     }
 
-    const q = query(collection(db, 'files'), orderBy('createdAt', 'desc'));
+    const q = collection(db, 'files');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedFiles = snapshot.docs.map(doc => ({
            id: doc.id,
@@ -424,8 +424,12 @@ export default forwardRef<FileManagerRef, {
              subType: doc.data().subType || '',
              coverId: ''
            },
+           createdAt: doc.data().createdAt ? (doc.data().createdAt.toMillis ? doc.data().createdAt.toMillis() : new Date(doc.data().createdAt).getTime()) : 0,
            shared: true
       }));
+
+      // Sort locally by createdAt descending
+      fetchedFiles.sort((a, b) => b.createdAt - a.createdAt);
 
       setFiles(fetchedFiles);
       localStorage.setItem('cachedFileList', JSON.stringify(fetchedFiles));
